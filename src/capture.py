@@ -133,9 +133,25 @@ class GameCapture:
             pass
         return 0
 
+    @staticmethod
+    def _bring_to_foreground(hwnd: int) -> None:
+        """O'yin oynasini old planda ko'rsatish."""
+        try:
+            # Minimized bo'lsa restore qilish
+            if win32gui.IsIconic(hwnd):
+                win32gui.ShowWindow(hwnd, 9)  # SW_RESTORE
+            win32gui.SetForegroundWindow(hwnd)
+            time.sleep(0.3)
+        except Exception:
+            pass
+
     def capture_screenshot(self) -> np.ndarray:
         """O'yin oynasidan bitta screenshot olish (dxcam orqali)."""
         region = self.find_game_window()
+
+        # O'yin oynasini foreground ga olib chiqish
+        self._bring_to_foreground(region["hwnd"])
+
         win_left = region["left"]
         win_top = region["top"]
         win_w = region["width"]
