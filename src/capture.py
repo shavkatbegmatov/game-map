@@ -1,9 +1,19 @@
+import ctypes
 import time
 
 import cv2
 import numpy as np
 
 from .config import Config
+
+# DPI awareness o'rnatish — GetWindowRect fizik piksellar qaytarishi uchun
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)  # Per-Monitor DPI Aware
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
 try:
     import dxcam
@@ -28,7 +38,7 @@ class GameCapture:
         self.config = config
         if dxcam is None:
             raise ImportError("'dxcam' kutubxonasi o'rnatilmagan: pip install dxcam")
-        self.camera = dxcam.create()
+        self.camera = None  # capture_screenshot da yaratiladi
 
     @staticmethod
     def _list_windows() -> list[tuple[int, str]]:
@@ -45,7 +55,7 @@ class GameCapture:
         return windows
 
     def find_game_window(self) -> dict:
-        """O'yin oynasini topish va uning pozitsiyasini qaytarish."""
+        """O'yin oynasini topish va uning klient maydonini qaytarish."""
         if win32gui is None:
             raise ImportError(
                 "'pywin32' kutubxonasi o'rnatilmagan: pip install pywin32"
@@ -78,25 +88,77 @@ class GameCapture:
                 f"  O'yin ochiq ekanligiga ishonch hosil qiling."
             )
 
-        rect = win32gui.GetWindowRect(hwnd)
+        # Klient maydoni — oyna ramkasi va sarlavhasiz, faqat o'yin kontenti
+        client_rect = win32gui.GetClientRect(hwnd)
+        left, top = win32gui.ClientToScreen(hwnd, (client_rect[0], client_rect[1]))
+        width = client_rect[2] - client_rect[0]
+        height = client_rect[3] - client_rect[1]
+
         return {
-            "left": rect[0],
-            "top": rect[1],
-            "width": rect[2] - rect[0],
-            "height": rect[3] - rect[1],
+            "hwnd": hwnd,
+            "left": left,
+            "top": top,
+            "width": width,
+            "height": height,
         }
+
+    def _find_monitor_index(self, window_left: int, window_top: int) -> int:
+        """Oyna qaysi monitorda ekanini aniqlash."""
+        try:
+            from ctypes import windll, byref, Structure, c_long, POINTER, WINFUNCTYPE, c_int
+            import ctypes
+
+            hmon = windll.user32.MonitorFromPoint(
+                ctypes.wintypes.POINT(window_left, window_top), 1  # MONITOR_DEFAULTTONEAREST
+            )
+
+            class MONITORINFO(Structure):
+                _fields_ = [
+                    ("cbSize", c_long),
+                    ("rcMonitor", ctypes.wintypes.RECT),
+                    ("rcWork", ctypes.wintypes.RECT),
+                    ("dwFlags", c_long),
+                ]
+
+            info = MONITORINFO()
+            info.cbSize = ctypes.sizeof(MONITORINFO)
+            windll.user32.GetMonitorInfoW(hmon, byref(info))
+
+            # dxcam monitor indeksini topish — barcha output'larni tekshirish
+            outputs = dxcam.device_info()
+            for idx, dev in enumerate(outputs):
+                if dev.get("left") == info.rcMonitor.left and dev.get("top") == info.rcMonitor.top:
+                    return idx
+        except Exception:
+            pass
+        return 0
 
     def capture_screenshot(self) -> np.ndarray:
         """O'yin oynasidan bitta screenshot olish (dxcam orqali)."""
         region = self.find_game_window()
-        left = max(0, region["left"])
-        top = max(0, region["top"])
-        right = min(left + region["width"], self.camera.width)
-        bottom = min(top + region["height"], self.camera.height)
+        win_left = region["left"]
+        win_top = region["top"]
+        win_w = region["width"]
+        win_h = region["height"]
+
+        # Camera yaratish yoki qayta yaratish (monitor o'zgarishi mumkin)
+        if self.camera is None:
+            self.camera = dxcam.create(output_idx=0)
+
+        # Region ni ekran chegarasiga moslashtirish
+        scr_w = self.camera.width
+        scr_h = self.camera.height
+
+        left = max(0, min(win_left, scr_w - 1))
+        top = max(0, min(win_top, scr_h - 1))
+        right = max(left + 1, min(win_left + win_w, scr_w))
+        bottom = max(top + 1, min(win_top + win_h, scr_h))
+
+        print(f"  Ekran: {scr_w}x{scr_h}, Oyna: left={win_left}, top={win_top}, {win_w}x{win_h}")
+        print(f"  Capture region: ({left}, {top}, {right}, {bottom})")
 
         img = self.camera.grab(region=(left, top, right, bottom))
         if img is None:
-            # Birinchi grab ba'zan None qaytaradi, qayta urinish
             time.sleep(0.1)
             img = self.camera.grab(region=(left, top, right, bottom))
         if img is None:

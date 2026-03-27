@@ -136,7 +136,7 @@ Misollar:
         print()
         choice = input("Tanlang (1/2): ").strip()
 
-        if choice == "2":
+        if choice != "1":
             args.mode = "auto"
             args.count = int(input("Screenshot soni [5]: ").strip() or "5")
             direction = input("Yo'nalish (right/left/up/down) [right]: ").strip() or "right"
@@ -144,7 +144,7 @@ Misollar:
                 print(f"Noto'g'ri yo'nalish: {direction}. 'right' ishlatiladi.")
                 direction = "right"
             args.direction = direction
-            args.save_screenshots = input("Screenshotlarni saqlash? (y/n) [n]: ").strip().lower() == "y"
+            args.save_screenshots = input("Screenshotlarni saqlash? (y/n) [y]: ").strip().lower() != "n"
             args.game_title = input(f"O'yin oynasi nomi [Erz]: ").strip() or "Erz"
         else:
             args.mode = "manual"
