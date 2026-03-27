@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"D:/PROJECTS/GAME/game-map/.venv/Scripts/python.exe\" -c \"import cv2; print\\('OpenCV:', cv2.__version__\\)\" 2>&1)",
+      "Bash(\"D:/PROJECTS/GAME/game-map/.venv/Scripts/pip.exe\" list:*)",
+      "Bash(\"D:/PROJECTS/GAME/game-map/.venv/Scripts/python.exe\" -c \"from PIL import Image; img = Image.open\\('D:/PROJECTS/GAME/game-map/01.png'\\); print\\('01.png:', img.size, img.mode\\); img2 = Image.open\\('D:/PROJECTS/GAME/game-map/02.png'\\); print\\('02.png:', img2.size, img2.mode\\)\" 2>&1)",
+      "Bash(\"D:/PROJECTS/GAME/game-map/.venv/Scripts/python.exe\" -c \"\nimport struct, zlib\ndef png_info\\(path\\):\n    with open\\(path, 'rb'\\) as f:\n        sig = f.read\\(8\\)\n        chunk_len = struct.unpack\\('>I', f.read\\(4\\)\\)[0]\n        chunk_type = f.read\\(4\\)\n        data = f.read\\(chunk_len\\)\n        width, height, bit_depth, color_type = struct.unpack\\('>IIBB', data[:10]\\)\n        print\\(f'{path}: {width}x{height}, bit_depth={bit_depth}, color_type={color_type}'\\)\npng_info\\('D:/PROJECTS/GAME/game-map/01.png'\\)\npng_info\\('D:/PROJECTS/GAME/game-map/02.png'\\)\n\" 2>&1)",
+      "Bash(.venv/Scripts/pip install:*)",
+      "Bash(.venv/Scripts/python main.py manual -d screenshots -o output/map.png --debug)"
+    ]
+  }
+}
