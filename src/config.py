@@ -6,7 +6,7 @@ from pathlib import Path
 class Config:
     screenshots_dir: Path = Path("screenshots")
     output_dir: Path = Path("output")
-    game_window_title: str = "ERZ Online"
+    game_window_title: str = "Erz"
     capture_delay: float = 0.5
     min_match_count: int = 10
     feature_detector: str = "ORB"

@@ -89,7 +89,7 @@ Misollar:
     )
     auto.add_argument(
         "--game-title",
-        default="ERZ Online",
+        default="Erz",
         help="O'yin oynasi nomi",
     )
 
@@ -124,11 +124,33 @@ Misollar:
 
     args = parser.parse_args()
 
-    # Rejim berilmasa — default manual rejim
+    # Rejim berilmasa — foydalanuvchidan so'rash
     if args.mode is None:
-        args.mode = "manual"
-        args.directory = "screenshots"
-        args.output = "output/map.png"
+        print("=" * 50)
+        print("  ERZ Online Map Stitcher")
+        print("=" * 50)
+        print()
+        print("Rejimni tanlang:")
+        print("  1) manual  — Papkadagi rasmlarni birlashtirish")
+        print("  2) auto    — O'yin oynasidan screenshot olib birlashtirish")
+        print()
+        choice = input("Tanlang (1/2): ").strip()
+
+        if choice == "2":
+            args.mode = "auto"
+            args.count = int(input("Screenshot soni [5]: ").strip() or "5")
+            direction = input("Yo'nalish (right/left/up/down) [right]: ").strip() or "right"
+            if direction not in ("right", "left", "up", "down"):
+                print(f"Noto'g'ri yo'nalish: {direction}. 'right' ishlatiladi.")
+                direction = "right"
+            args.direction = direction
+            args.save_screenshots = input("Screenshotlarni saqlash? (y/n) [n]: ").strip().lower() == "y"
+            args.game_title = input(f"O'yin oynasi nomi [Erz]: ").strip() or "Erz"
+        else:
+            args.mode = "manual"
+            args.directory = input("Rasmlar papkasi [screenshots]: ").strip() or "screenshots"
+
+        args.output = input("Natija fayl yo'li [output/map.png]: ").strip() or "output/map.png"
         args.detector = "ORB"
         args.ratio = 0.75
         args.min_matches = 10
