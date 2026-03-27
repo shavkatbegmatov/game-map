@@ -193,6 +193,47 @@ class GameCapture:
         # dxcam RGB formatda qaytaradi, BGR ga o'tkazamiz
         return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
+    def _move_camera(self, hwnd: int, direction: str, distance: int = 400) -> None:
+        """O'yin kamerasini sichqoncha o'ng tugma + drag bilan siljitish."""
+        # Oyna markazini topish
+        client_rect = win32gui.GetClientRect(hwnd)
+        cx = (client_rect[2] - client_rect[0]) // 2
+        cy = (client_rect[3] - client_rect[1]) // 2
+        start_x, start_y = win32gui.ClientToScreen(hwnd, (cx, cy))
+
+        # Yo'nalish bo'yicha siljish
+        dx, dy = {
+            "right": (-distance, 0),
+            "left": (distance, 0),
+            "up": (0, distance),
+            "down": (0, -distance),
+        }.get(direction, (-distance, 0))
+
+        end_x = start_x + dx
+        end_y = start_y + dy
+
+        # Sichqonchani markazga olib borish
+        ctypes.windll.user32.SetCursorPos(start_x, start_y)
+        time.sleep(0.05)
+
+        # O'ng tugmani bosish (RIGHTDOWN)
+        ctypes.windll.user32.mouse_event(0x0008, 0, 0, 0, 0)
+        time.sleep(0.05)
+
+        # Bosqichma-bosqich siljitish (smooth drag)
+        steps = 20
+        for step in range(1, steps + 1):
+            ix = start_x + dx * step // steps
+            iy = start_y + dy * step // steps
+            ctypes.windll.user32.SetCursorPos(ix, iy)
+            time.sleep(0.01)
+
+        time.sleep(0.05)
+
+        # O'ng tugmani qo'yib yuborish (RIGHTUP)
+        ctypes.windll.user32.mouse_event(0x0010, 0, 0, 0, 0)
+        time.sleep(self.config.capture_delay)
+
     def capture_sequence(
         self,
         count: int = 5,
@@ -206,19 +247,6 @@ class GameCapture:
             direction: Harakat yo'nalishi (right, left, up, down)
             save_dir: Agar berilsa, har bir screenshotni shu papkaga saqlaydi
         """
-        if keyboard is None:
-            raise ImportError(
-                "'keyboard' kutubxonasi o'rnatilmagan: pip install keyboard"
-            )
-
-        key_map = {
-            "right": "right",
-            "left": "left",
-            "up": "up",
-            "down": "down",
-        }
-        key = key_map.get(direction, "right")
-
         images = []
         for i in range(count):
             print(f"  Screenshot {i + 1}/{count}...")
@@ -230,10 +258,7 @@ class GameCapture:
                 cv2.imwrite(path, img)
 
             if i < count - 1:
-                # O'yinda harakatlanish
-                keyboard.press(key)
-                time.sleep(0.15)
-                keyboard.release(key)
-                time.sleep(self.config.capture_delay)
+                region = self.find_game_window()
+                self._move_camera(region["hwnd"], direction)
 
         return images
