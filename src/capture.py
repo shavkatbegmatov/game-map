@@ -198,28 +198,61 @@ class GameCapture:
         # dxcam RGB formatda qaytaradi, BGR ga o'tkazamiz
         return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
+    def _send_mouse_input(self, flags: int, dx: int = 0, dy: int = 0) -> None:
+        """SendInput orqali mouse event yuborish."""
+        import ctypes.wintypes
+
+        class MOUSEINPUT(ctypes.Structure):
+            _fields_ = [
+                ("dx", ctypes.c_long),
+                ("dy", ctypes.c_long),
+                ("mouseData", ctypes.c_ulong),
+                ("dwFlags", ctypes.c_ulong),
+                ("time", ctypes.c_ulong),
+                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+            ]
+
+        class INPUT(ctypes.Structure):
+            _fields_ = [
+                ("type", ctypes.c_ulong),
+                ("mi", MOUSEINPUT),
+            ]
+
+        extra = ctypes.c_ulong(0)
+        inp = INPUT()
+        inp.type = 0  # INPUT_MOUSE
+        inp.mi = MOUSEINPUT(dx, dy, 0, flags, 0, ctypes.pointer(extra))
+        ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+
     def _drag_mouse(self, hwnd: int, dx: int, dy: int) -> None:
-        """Sichqoncha o'ng tugma bilan drag qilish."""
+        """Sichqoncha o'ng tugma bilan drag qilish (SendInput)."""
         client_rect = win32gui.GetClientRect(hwnd)
         cx = (client_rect[2] - client_rect[0]) // 2
         cy = (client_rect[3] - client_rect[1]) // 2
         start_x, start_y = win32gui.ClientToScreen(hwnd, (cx, cy))
 
+        # Sichqonchani markazga
         ctypes.windll.user32.SetCursorPos(start_x, start_y)
-        time.sleep(0.05)
+        time.sleep(0.1)
 
-        ctypes.windll.user32.mouse_event(0x0008, 0, 0, 0, 0)  # RIGHTDOWN
-        time.sleep(0.05)
+        # O'ng tugma bosish
+        self._send_mouse_input(0x0008)  # MOUSEEVENTF_RIGHTDOWN
+        time.sleep(0.1)
 
-        steps = 30
+        # Bosqichma-bosqich siljitish
+        steps = 40
         for step in range(1, steps + 1):
             ix = start_x + dx * step // steps
             iy = start_y + dy * step // steps
             ctypes.windll.user32.SetCursorPos(ix, iy)
-            time.sleep(0.01)
+            # MOUSEEVENTF_MOVE signalini yuborish
+            self._send_mouse_input(0x0001)  # MOUSEEVENTF_MOVE
+            time.sleep(0.015)
 
-        time.sleep(0.05)
-        ctypes.windll.user32.mouse_event(0x0010, 0, 0, 0, 0)  # RIGHTUP
+        time.sleep(0.1)
+
+        # O'ng tugma qo'yish
+        self._send_mouse_input(0x0010)  # MOUSEEVENTF_RIGHTUP
         time.sleep(self.config.capture_delay)
 
     def _calibrate(self, hwnd: int, direction: str) -> float:
@@ -268,8 +301,12 @@ class GameCapture:
                 shifts.append(abs(pt1[1] - pt2[1]))
 
         screen_shift = float(np.median(shifts))
-        ratio = screen_shift / test_distance
 
+        if screen_shift < 1:
+            print(f"  Kalibrlash: ekran siljimadi, default 0.33 ishlatiladi")
+            return 0.33
+
+        ratio = screen_shift / test_distance
         print(f"  Kalibrlash natijasi: mouse {test_distance}px → ekran {screen_shift:.0f}px (nisbat: {ratio:.2f})")
         return ratio
 
