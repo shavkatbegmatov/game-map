@@ -31,7 +31,8 @@ def manual_mode(config: Config, directory: str, output: str, debug: bool) -> Non
 
 
 def auto_mode(
-    config: Config, count: int, direction: str, output: str, save_screenshots: bool
+    config: Config, count: int, direction: str, output: str, save_screenshots: bool,
+    debug: bool = True,
 ) -> None:
     """Avtomatik rejim — o'yin oynasidan screenshot olib birlashtirish."""
     from src.capture import GameCapture
@@ -44,6 +45,15 @@ def auto_mode(
 
     images = capture.capture_sequence(count=count, direction=direction, save_dir=save_dir)
     print(f"\n{len(images)} ta screenshot olindi. Birlashtirish boshlanmoqda...\n")
+
+    if debug and len(images) >= 2:
+        from src.matcher import FeatureMatcher
+
+        fm = FeatureMatcher(config.feature_detector, config.match_ratio)
+        kp1, kp2, good = fm.find_matches(images[0], images[1])
+        debug_img = fm.draw_matches(images[0], images[1], kp1, kp2, good)
+        debug_path = str(Path(output).parent / "debug_matches.png")
+        save_result(debug_img, debug_path)
 
     stitcher = MapStitcher(config)
     result = stitcher.stitch_all(images)
@@ -154,7 +164,7 @@ Misollar:
         args.detector = "ORB"
         args.ratio = 0.75
         args.min_matches = 10
-        args.debug = False
+        args.debug = True
 
     config = Config(
         feature_detector=args.detector,
@@ -173,7 +183,7 @@ Misollar:
         manual_mode(config, args.directory, args.output, args.debug)
     elif args.mode == "auto":
         config.game_window_title = args.game_title
-        auto_mode(config, args.count, args.direction, args.output, args.save_screenshots)
+        auto_mode(config, args.count, args.direction, args.output, args.save_screenshots, args.debug)
 
 
 if __name__ == "__main__":

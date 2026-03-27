@@ -140,8 +140,13 @@ class GameCapture:
             # Minimized bo'lsa restore qilish
             if win32gui.IsIconic(hwnd):
                 win32gui.ShowWindow(hwnd, 9)  # SW_RESTORE
+                time.sleep(0.3)
+
+            # Alt tugma trick — Windows SetForegroundWindow cheklovini chetlab o'tish
+            ctypes.windll.user32.keybd_event(0x12, 0, 0, 0)  # Alt press
+            ctypes.windll.user32.keybd_event(0x12, 0, 2, 0)  # Alt release
             win32gui.SetForegroundWindow(hwnd)
-            time.sleep(0.3)
+            time.sleep(0.5)
         except Exception:
             pass
 
