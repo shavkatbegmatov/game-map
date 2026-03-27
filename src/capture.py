@@ -152,10 +152,20 @@ class GameCapture:
         # O'yin oynasini foreground ga olib chiqish
         self._bring_to_foreground(region["hwnd"])
 
+        # Foreground ga chiqqandan keyin koordinatalarni qayta olish
+        # (minimized bo'lgan oyna restore bo'lganda pozitsiya o'zgaradi)
+        region = self.find_game_window()
+
         win_left = region["left"]
         win_top = region["top"]
         win_w = region["width"]
         win_h = region["height"]
+
+        if win_w <= 0 or win_h <= 0:
+            raise RuntimeError(
+                f"O'yin oynasi noto'g'ri o'lchamda: {win_w}x{win_h}. "
+                f"Oyna minimized yoki yopiq bo'lishi mumkin."
+            )
 
         # Camera yaratish yoki qayta yaratish (monitor o'zgarishi mumkin)
         if self.camera is None:
