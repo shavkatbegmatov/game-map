@@ -198,35 +198,20 @@ class GameCapture:
         # dxcam RGB formatda qaytaradi, BGR ga o'tkazamiz
         return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
-    def _move_camera(self, hwnd: int, direction: str, distance: int = 400) -> None:
-        """O'yin kamerasini sichqoncha o'ng tugma + drag bilan siljitish."""
-        # Oyna markazini topish
+    def _drag_mouse(self, hwnd: int, dx: int, dy: int) -> None:
+        """Sichqoncha o'ng tugma bilan drag qilish."""
         client_rect = win32gui.GetClientRect(hwnd)
         cx = (client_rect[2] - client_rect[0]) // 2
         cy = (client_rect[3] - client_rect[1]) // 2
         start_x, start_y = win32gui.ClientToScreen(hwnd, (cx, cy))
 
-        # Yo'nalish bo'yicha siljish
-        dx, dy = {
-            "right": (-distance, 0),
-            "left": (distance, 0),
-            "up": (0, distance),
-            "down": (0, -distance),
-        }.get(direction, (-distance, 0))
-
-        end_x = start_x + dx
-        end_y = start_y + dy
-
-        # Sichqonchani markazga olib borish
         ctypes.windll.user32.SetCursorPos(start_x, start_y)
         time.sleep(0.05)
 
-        # O'ng tugmani bosish (RIGHTDOWN)
-        ctypes.windll.user32.mouse_event(0x0008, 0, 0, 0, 0)
+        ctypes.windll.user32.mouse_event(0x0008, 0, 0, 0, 0)  # RIGHTDOWN
         time.sleep(0.05)
 
-        # Bosqichma-bosqich siljitish (smooth drag)
-        steps = 20
+        steps = 30
         for step in range(1, steps + 1):
             ix = start_x + dx * step // steps
             iy = start_y + dy * step // steps
@@ -234,16 +219,82 @@ class GameCapture:
             time.sleep(0.01)
 
         time.sleep(0.05)
-
-        # O'ng tugmani qo'yib yuborish (RIGHTUP)
-        ctypes.windll.user32.mouse_event(0x0010, 0, 0, 0, 0)
+        ctypes.windll.user32.mouse_event(0x0010, 0, 0, 0, 0)  # RIGHTUP
         time.sleep(self.config.capture_delay)
+
+    def _calibrate(self, hwnd: int, direction: str) -> float:
+        """Mouse harakati va ekran siljishi nisbatini aniqlash.
+
+        Returns:
+            ratio: ekran_siljishi / mouse_siljishi (masalan, 0.33 = 3px mouse = 1px ekran)
+        """
+        from .matcher import FeatureMatcher
+
+        test_distance = 300  # test uchun mouse px
+
+        print("  Kalibrlash...")
+        img_before = self.capture_screenshot()
+
+        dx, dy = {
+            "right": (-test_distance, 0),
+            "left": (test_distance, 0),
+            "up": (0, test_distance),
+            "down": (0, -test_distance),
+        }.get(direction, (-test_distance, 0))
+
+        self._drag_mouse(hwnd, dx, dy)
+        img_after = self.capture_screenshot()
+
+        # Orqaga qaytarish
+        self._drag_mouse(hwnd, -dx, -dy)
+        time.sleep(0.3)
+
+        # Feature matching bilan haqiqiy siljishni hisoblash
+        fm = FeatureMatcher("ORB", 0.75)
+        kp1, kp2, good = fm.find_matches(img_before, img_after)
+
+        if len(good) < 10:
+            print(f"  Kalibrlash: yetarli match topilmadi ({len(good)}), default 0.33 ishlatiladi")
+            return 0.33
+
+        # Median siljishni hisoblash
+        shifts = []
+        for m in good:
+            pt1 = kp1[m.queryIdx].pt
+            pt2 = kp2[m.trainIdx].pt
+            if direction in ("right", "left"):
+                shifts.append(abs(pt1[0] - pt2[0]))
+            else:
+                shifts.append(abs(pt1[1] - pt2[1]))
+
+        screen_shift = float(np.median(shifts))
+        ratio = screen_shift / test_distance
+
+        print(f"  Kalibrlash natijasi: mouse {test_distance}px → ekran {screen_shift:.0f}px (nisbat: {ratio:.2f})")
+        return ratio
+
+    def _move_camera(self, hwnd: int, direction: str, screen_distance: int = 400,
+                     ratio: float = 0.33) -> None:
+        """O'yin kamerasini ma'lum ekran piksel masofasiga siljitish."""
+        # screen_distance — ekranda qancha piksel siljishi kerak
+        # ratio — ekran/mouse nisbati
+        mouse_distance = int(screen_distance / ratio)
+
+        dx, dy = {
+            "right": (-mouse_distance, 0),
+            "left": (mouse_distance, 0),
+            "up": (0, mouse_distance),
+            "down": (0, -mouse_distance),
+        }.get(direction, (-mouse_distance, 0))
+
+        self._drag_mouse(hwnd, dx, dy)
 
     def capture_sequence(
         self,
         count: int = 5,
         direction: str = "right",
         save_dir: str | None = None,
+        overlap: float = 0.3,
     ) -> list[np.ndarray]:
         """Ketma-ket screenshot olish, o'yinda harakatlanib.
 
@@ -251,9 +302,35 @@ class GameCapture:
             count: Nechta screenshot olish
             direction: Harakat yo'nalishi (right, left, up, down)
             save_dir: Agar berilsa, har bir screenshotni shu papkaga saqlaydi
+            overlap: Screenshotlar orasidagi overlap nisbati (0.0-1.0)
         """
-        images = []
-        for i in range(count):
+        # Birinchi screenshot — oyna o'lchamini bilish uchun
+        print(f"  Screenshot 1/{count}...")
+        first_img = self.capture_screenshot()
+        images = [first_img]
+
+        if save_dir:
+            cv2.imwrite(f"{save_dir}/01.png", first_img)
+
+        if count <= 1:
+            return images
+
+        h, w = first_img.shape[:2]
+        if direction in ("right", "left"):
+            screen_distance = int(w * (1 - overlap))
+        else:
+            screen_distance = int(h * (1 - overlap))
+
+        # Kalibrlash — mouse/ekran nisbatini aniqlash
+        region = self.find_game_window()
+        ratio = self._calibrate(region["hwnd"], direction)
+
+        print(f"  Har bir qadam: ekranda {screen_distance}px siljish (overlap: {overlap:.0%})\n")
+
+        for i in range(1, count):
+            region = self.find_game_window()
+            self._move_camera(region["hwnd"], direction, screen_distance, ratio)
+
             print(f"  Screenshot {i + 1}/{count}...")
             img = self.capture_screenshot()
             images.append(img)
@@ -261,9 +338,5 @@ class GameCapture:
             if save_dir:
                 path = f"{save_dir}/{i + 1:02d}.png"
                 cv2.imwrite(path, img)
-
-            if i < count - 1:
-                region = self.find_game_window()
-                self._move_camera(region["hwnd"], direction)
 
         return images
