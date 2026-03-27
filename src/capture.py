@@ -89,9 +89,10 @@ class GameCapture:
     def capture_screenshot(self) -> np.ndarray:
         """O'yin oynasidan bitta screenshot olish (dxcam orqali)."""
         region = self.find_game_window()
-        left, top = region["left"], region["top"]
-        right = left + region["width"]
-        bottom = top + region["height"]
+        left = max(0, region["left"])
+        top = max(0, region["top"])
+        right = min(left + region["width"], self.camera.width)
+        bottom = min(top + region["height"], self.camera.height)
 
         img = self.camera.grab(region=(left, top, right, bottom))
         if img is None:
