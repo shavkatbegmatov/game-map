@@ -6,9 +6,9 @@ import numpy as np
 from .config import Config
 
 try:
-    import mss
+    import dxcam
 except ImportError:
-    mss = None
+    dxcam = None
 
 try:
     import win32gui
@@ -26,9 +26,9 @@ class GameCapture:
 
     def __init__(self, config: Config):
         self.config = config
-        if mss is None:
-            raise ImportError("'mss' kutubxonasi o'rnatilmagan: pip install mss")
-        self.sct = mss.mss()
+        if dxcam is None:
+            raise ImportError("'dxcam' kutubxonasi o'rnatilmagan: pip install dxcam")
+        self.camera = dxcam.create()
 
     @staticmethod
     def _list_windows() -> list[tuple[int, str]]:
@@ -87,12 +87,22 @@ class GameCapture:
         }
 
     def capture_screenshot(self) -> np.ndarray:
-        """O'yin oynasidan bitta screenshot olish."""
+        """O'yin oynasidan bitta screenshot olish (dxcam orqali)."""
         region = self.find_game_window()
-        screenshot = self.sct.grab(region)
-        img = np.array(screenshot)
-        # BGRA -> BGR
-        return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        left, top = region["left"], region["top"]
+        right = left + region["width"]
+        bottom = top + region["height"]
+
+        img = self.camera.grab(region=(left, top, right, bottom))
+        if img is None:
+            # Birinchi grab ba'zan None qaytaradi, qayta urinish
+            time.sleep(0.1)
+            img = self.camera.grab(region=(left, top, right, bottom))
+        if img is None:
+            raise RuntimeError("Screenshot olib bo'lmadi (dxcam None qaytardi)")
+
+        # dxcam RGB formatda qaytaradi, BGR ga o'tkazamiz
+        return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
     def capture_sequence(
         self,
